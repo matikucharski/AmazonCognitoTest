@@ -1,3 +1,5 @@
 # Created by .ignore support plugin
+/.idea
+/node_modules
 /dist
 /src/config.js
