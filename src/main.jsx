@@ -1,4 +1,4 @@
-import {Config, CognitoIdentityCredentials} from 'aws-sdk';
+import {Config, CognitoIdentityCredentials, config} from 'aws-sdk';
 import {
     CognitoUserPool,
     CognitoUserAttribute,
@@ -9,16 +9,21 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import appConfig from './config';
 
+/*
+    more examples here:
+    http://docs.aws.amazon.com/cognito/latest/developerguide/using-amazon-cognito-user-identity-pools-javascript-examples.html
+ */
+
 Config.region = appConfig.region;
-// Config.credentials = new CognitoIdentityCredentials({
-//     IdentityPoolId: appConfig.IdentityPoolId
-// });
+config.region = appConfig.region;
+Config.credentials = new CognitoIdentityCredentials({
+    IdentityPoolId: appConfig.IdentityPoolId
+});
 
 const userPool = new CognitoUserPool({
     UserPoolId: appConfig.UserPoolId,
     ClientId: appConfig.ClientId,
 });
-window.userPool = userPool;
 
 class App extends React.Component {
     constructor(props) {
@@ -158,9 +163,9 @@ class SignInForm extends React.Component {
         super(props);
         this.state = {
             email: '',
-            password: ''
+            password: '',
+            cognitoUser: userPool.getCurrentUser()
         };
-        console.log(userPool.getCurrentUser());
     }
 
     emailHandler(e) {
@@ -189,16 +194,63 @@ class SignInForm extends React.Component {
         cognitoUser.authenticateUser(authenticationDetails, {
             onSuccess: function (result) {
                 console.log('access token + ' + result.getAccessToken().getJwtToken());
-                // window.fetchedResult = result;
+
+                AWS.config.credentials = new CognitoIdentityCredentials({
+                    IdentityPoolId : appConfig.IdentityPoolId,
+                    Logins : {
+                        [`cognito-idp.${appConfig.region}.amazonaws.com/${appConfig.UserPoolId}`] : result.getIdToken().getJwtToken()
+                    }
+                });
+                // this.setState({cognitoUser: userPool.getCurrentUser()}); //this causes console error and it is not working
             },
             onFailure: function(err) {
                 alert(err);
             },
-            mfaRequired: function(codeDeliveryDetails) {//if multi factor authentication is enabled
+            /*mfaRequired: function(codeDeliveryDetails) {//if multi factor authentication is enabled
                 var verificationCode = prompt('Please input verification code' ,'');
                 cognitoUser.sendMFACode(verificationCode, this);
-            }
+            }*/
         });
+    }
+
+    showLoggedUser(e) {
+        e.preventDefault();
+        const cognitoUser = this.state.cognitoUser;
+        if (cognitoUser) {
+            cognitoUser.getSession(function(err, session) {
+                if (err) {
+                    alert(err);
+                    return;
+                }
+                console.log('session validity:', session.isValid());
+                console.log('cognitoUser:', cognitoUser);
+            });
+        }
+    }
+
+    getAttributes(e) {
+        e.preventDefault();
+        const cognitoUser = this.state.cognitoUser;
+        if (cognitoUser) {
+            cognitoUser.getUserAttributes(function(err, result) {
+                if (err) {
+                    alert(err);
+                    return;
+                }
+                for (var i = 0; i < result.length; i++) {
+                    console.log('attribute:', result[i].getName(), ' has value:', result[i].getValue());
+                }
+            });
+        }
+    }
+
+    logoutUser(e) {
+        e.preventDefault();
+        const cognitoUser = this.state.cognitoUser;
+        if (cognitoUser) {
+            cognitoUser.signOut();
+            this.setState({cognitoUser: userPool.getCurrentUser()});
+        }
     }
 
     render() {
@@ -216,6 +268,17 @@ class SignInForm extends React.Component {
                            onChange={this.passwordHandler.bind(this)}/>
                     <input type="submit"/>
                 </form>
+                {
+                    this.state.cognitoUser
+                    ?
+                        <div>
+                            <button onClick={this.logoutUser.bind(this)}>Logout</button>
+                            <button onClick={this.showLoggedUser.bind(this)}>Show User Details</button>
+                            <button onClick={this.getAttributes.bind(this)}>Get User Attributes</button>
+                        </div>
+                    :
+                    <div>You need to login</div>
+                }
             </div>
         );
     }
